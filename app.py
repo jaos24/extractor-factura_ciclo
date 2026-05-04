@@ -87,16 +87,45 @@ def extraer_pagina(page):
 
     return filas, False
 
+def tiene_abonados(page):
+    """Verifica si una página contiene al menos una fila de abonados"""
+    words = page.extract_words(x_tolerance=3, y_tolerance=3)
+    lineas = {}
+    for w in words:
+        top = round(w['top'])
+        lineas.setdefault(top, []).append(w)
+    for top in sorted(lineas.keys()):
+        palabras = sorted(lineas[top], key=lambda x: x['x0'])
+        celda = {col: [] for col, _, _ in COLUMNAS}
+        for w in palabras:
+            cx = (w['x0'] + w['x1']) / 2
+            for col, xmin, xmax in COLUMNAS:
+                if xmin <= cx < xmax:
+                    celda[col].append(w['text'])
+                    break
+        linea_val = ' '.join(celda['Línea']).strip()
+        if es_linea_valida(linea_val):
+            return True
+    return False
+
 def procesar_pdf(archivo):
     todas_las_filas = []
     with pdfplumber.open(archivo) as pdf:
         total_paginas = len(pdf.pages)
+
+        # Detectar automáticamente la página de inicio (2 o 3)
+        pagina_inicio = 1  # índice 1 = página 2
+        if total_paginas >= 3 and not tiene_abonados(pdf.pages[1]):
+            pagina_inicio = 2  # índice 2 = página 3
+
         progress = st.progress(0, text="Procesando páginas...")
-        for i in range(2, total_paginas):
+        paginas_a_procesar = total_paginas - pagina_inicio
+
+        for i in range(pagina_inicio, total_paginas):
             filas, encontro_total = extraer_pagina(pdf.pages[i])
             todas_las_filas.extend(filas)
             progress.progress(
-                int((i - 1) / (total_paginas - 2) * 100),
+                int((i - pagina_inicio + 1) / paginas_a_procesar * 100),
                 text=f"Procesando página {i+1} de {total_paginas}..."
             )
             if encontro_total:
